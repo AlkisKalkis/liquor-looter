@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 
 import psycopg
 from dotenv import load_dotenv
@@ -12,15 +13,19 @@ load_dotenv()
 def start():
     db_url = os.getenv("DATABASE_URL")
     connected = False
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Connecting to database")
     while not connected:
         try:
             with psycopg.connect(db_url) as connection:
                 connected = True
+                logging.info("Connected to database successfully")
                 create_tables(connection)
+                logging.info("Starting to crawl")
                 crawl.start_crawling(connection)
 
         except Exception as e:
-            print(e)
+            logging.warning(e)
             time.sleep(0.5)
             pass
 

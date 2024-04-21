@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 
@@ -14,7 +15,7 @@ def start_crawling(connection: psycopg.Connection):
         cursor.execute("SELECT COUNT(*) FROM links WHERE crawled = FALSE;")
         count = cursor.fetchone()[0]
     if count == 0:
-        print("No links to crawl. Fetching new links.")
+        logging.info("No links to crawl. Fetching new links.")
         fetch_links(connection)
 
     crawl_links(connection)
@@ -23,11 +24,12 @@ def start_crawling(connection: psycopg.Connection):
 def crawl_links(connection: psycopg.Connection):
     link = get_next_link(connection)
     while link:
+        logging.info(f"Crawling link {link[1]}")
         crawl_link(connection, link[0], link[1])
         link = get_next_link(connection)
         time.sleep(8 + random.random() * 3)
 
-    print("Crawled all links. Shutting down.")
+    logging.info("Crawled all links. Shutting down.")
 
 
 def get_next_link(connection: psycopg.Connection):
