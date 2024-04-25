@@ -23,7 +23,7 @@ def start():
         except Exception as e:
             logging.warning(e)
             time.sleep(0.5)
-            pass
+        logging.info("Connection to database lost. Retrying...")
 
 
 def import_wine(connection: psycopg.Connection):
@@ -33,12 +33,18 @@ def import_wine(connection: psycopg.Connection):
     product = get_next_raw_product(connection, index)
     while product and index < 250:
         index += 1
+        logging.info(f"Processing index {index}.")
         product_details, categories = get_product_details(product[1], product[0])
+        if product_details["alcohol"] == 0:
+            product_details["pricePerAlcohol"]  = 0
+        else:
+            product_details["pricePerAlcohol"] = int((product_details["price"] / 100) / ((product_details["volume"] / 100) * (product_details["alcohol"]/100)) * 100 * 100)
+            
         logging.info(f"Importing product {product_details['name']}")
         with connection.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO "alkis" (id, name, price, "alcoholByVolume", volume) 
-                VALUES (%(product_id)s, %(name)s, %(price)s, %(alcohol)s, %(volume)s) 
+                INSERT INTO "alkis" (id, name, price, "alcoholByVolume", volume, "pricePerAlcohol") 
+                VALUES (%(product_id)s, %(name)s, %(price)s, %(alcohol)s, %(volume)s, %(pricePerAlcohol)s) 
                 ON CONFLICT (id) 
                 DO UPDATE SET 
                     name = %(name)s, 
