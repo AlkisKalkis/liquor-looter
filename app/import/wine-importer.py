@@ -31,16 +31,23 @@ def import_wine(connection: psycopg.Connection):
     # Implement the wine importer here
     index = 0
     product = get_next_raw_product(connection, index)
-    while product and index < 250:
+    while product and index < 2500:
         index += 1
         logging.info(f"Processing index {index}.")
-        product_details, categories = get_product_details(product[1], product[0])
+        try:
+            product_details, categories = get_product_details(product[1], product[0])
+        except Exception as e:
+            logging.error(f"Failed to get product details for product {product[0]}. {e}")
+            product = get_next_raw_product(connection, index)
+            continue
+
         if product_details["alcohol"] == 0:
-            product_details["pricePerAlcohol"]  = 0
-        else:
-            product_details["pricePerAlcohol"] = int((product_details["price"] / 100) / ((product_details["volume"] / 100) * (product_details["alcohol"]/100)) * 100 * 100)
-            
+            logging.info(f"Product {product_details['name']} has no alcohol content. Skipping.")
+            product = get_next_raw_product(connection, index)
+            continue
+
         logging.info(f"Importing product {product_details['name']}")
+
         with connection.cursor() as cursor:
             cursor.execute("""
                 INSERT INTO "alkis" (id, name, price, "alcoholByVolume", volume, "pricePerAlcohol") 
@@ -50,7 +57,8 @@ def import_wine(connection: psycopg.Connection):
                     name = %(name)s, 
                     price = %(price)s, 
                     "alcoholByVolume" = %(alcohol)s, 
-                    volume = %(volume)s;""",
+                    volume = %(volume)s,
+                    "pricePerAlcohol" = %(pricePerAlcohol)s;""",
                            product_details)
 
             for category in categories:
@@ -59,6 +67,7 @@ def import_wine(connection: psycopg.Connection):
                         VALUES (%(category)s) 
                         ON CONFLICT ("categoryName") DO NOTHING;""",
                                {"category": category})
+
                 cursor.execute("""
                         INSERT INTO "alkisCategory" ("alkisId", "categoryId") 
                         VALUES (
@@ -77,7 +86,7 @@ def get_next_raw_product(connection: psycopg.Connection, index: int) -> (dict, l
     return product
 
 
-def get_product_details(html: str, product_id: int):
+def get_product_details(html: str, product_id: int) -> tuple[dict[str, str | int], list[str]]:
     soup = BeautifulSoup(html, 'html.parser')
 
     price_string = "".join(soup.find('span', {'class': 'product__price'}).text.split(' ')[1:])
@@ -93,7 +102,12 @@ def get_product_details(html: str, product_id: int):
 
     categories = soup.find('p', {'class': 'product__category-name'}).text.split(' - ')
 
-    return {"product_id": product_id, "name": name, "price": price, "alcohol": alcohol, "volume": volume}, categories
+    price_per_alcohol = 0
+    if alcohol != 0:
+        price_per_alcohol = price / ((volume / 1000) * (alcohol / 1000))
+
+    return {"product_id": product_id, "name": name, "price": price, "alcohol": alcohol, "volume": volume,
+            "price_per_alcohol": price_per_alcohol}, categories
 
 
 start()
